@@ -18,7 +18,7 @@ RUN case "${TARGETARCH}" in \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && wget -qO /tmp/servo.apk \
-         "https://github.com/bbusse/alpine-servo-build/releases/download/${SERVO_VERSION}/${APK_ARCH}-servo-${SERVO_VERSION}-r${SERVO_PKGREL}.apk" \
+         "https://github.com/bbusse/alpine-servo-build/releases/download/v${SERVO_VERSION}/${APK_ARCH}-servo-${SERVO_VERSION}-r${SERVO_PKGREL}.apk" \
     # The packaged apk only ships the servoshell binary itself (see
     # build-apk.yml's generic APKBUILD, which disables dependency tracing),
     # so pull its shared-library dependencies in from Alpine's own repos
