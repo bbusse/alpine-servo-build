@@ -14,7 +14,7 @@ ENGINE="${ENGINE:-podman}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/bbusse/moonshine-sway:latest}"
 TEST_IMAGE="${TEST_IMAGE:-moonshine-sway-servo:test}"
 
-SERVO_VERSION="${SERVO_VERSION:-0.4.0}"
+SERVO_VERSION="${SERVO_VERSION:-0.4.0_rc1}"
 SERVO_PKGREL="${SERVO_PKGREL:-0}"
 RELEASE_URL="${RELEASE_URL:-https://github.com/bbusse/alpine-servo-build/releases/download}"
 
@@ -34,7 +34,7 @@ setup_suite() {
     *) echo "unsupported host arch: $(uname -m)" >&2; return 1 ;;
     esac
 
-    asset="${arch}-servo-${SERVO_VERSION}-r${SERVO_PKGREL}.apk"
+    asset="${arch}-servoshell-${SERVO_VERSION}-r${SERVO_PKGREL}.${arch}.apk"
     if ! curl -fsSL -o "$tmp/servo.apk" \
             "${RELEASE_URL}/v${SERVO_VERSION}/${asset}"; then
         echo "could not fetch ${asset} from ${RELEASE_URL}/v${SERVO_VERSION}" >&2
@@ -71,7 +71,7 @@ in_image() {
 }
 
 test_apk_is_installed() {
-    assert_matches "servo" "$(in_image 'apk info -e servo')"
+    assert_matches "servoshell" "$(in_image 'apk info -e servoshell')"
 }
 
 test_servoshell_binary_present() {
