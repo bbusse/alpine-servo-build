@@ -5,8 +5,9 @@ LABEL org.opencontainers.image.source=https://github.com/bbusse/alpine-servo-bui
 LABEL org.opencontainers.image.description="Alpine Linux with Servo, a web browser engine, built natively for musl"
 
 # Must match a tag published by release.yml (git tag <version>) and the
-# pkgrel abuild built it with (see build-apk.yml, default pkgrel: 0)
-ARG SERVO_VERSION=0.4.0
+# pkgrel abuild built it with (see build-apk.yml, default pkgrel: 0).
+# The tag may carry a packaging suffix, so this is the full version
+ARG SERVO_VERSION=0.4.0_rc1
 ARG SERVO_PKGREL=0
 
 COPY keys/apk-releases.rsa.pub /etc/apk/keys/apk-releases.rsa.pub
@@ -18,7 +19,7 @@ RUN case "${TARGETARCH}" in \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && wget -qO /tmp/servo.apk \
-         "https://github.com/bbusse/alpine-servo-build/releases/download/v${SERVO_VERSION}/${APK_ARCH}-servo-${SERVO_VERSION}-r${SERVO_PKGREL}.apk" \
+         "https://github.com/bbusse/alpine-servo-build/releases/download/v${SERVO_VERSION}/${APK_ARCH}-servoshell-${SERVO_VERSION}-r${SERVO_PKGREL}.${APK_ARCH}.apk" \
     # The packaged apk only ships the servoshell binary itself (see
     # build-apk.yml's generic APKBUILD, which disables dependency tracing),
     # so pull its shared-library dependencies in from Alpine's own repos
