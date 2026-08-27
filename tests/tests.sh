@@ -11,7 +11,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 ENGINE="${ENGINE:-podman}"
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/bbusse/moonshine-sway:latest}"
+BASE_IMAGE="${BASE_IMAGE:-ghcr.io/bbusse/moonshine-sway-web:latest}"
 TEST_IMAGE="${TEST_IMAGE:-moonshine-sway-servo:test}"
 
 SERVO_VERSION="${SERVO_VERSION:-0.4.0_rc1}"
@@ -19,8 +19,7 @@ SERVO_PKGREL="${SERVO_PKGREL:-0}"
 RELEASE_URL="${RELEASE_URL:-https://github.com/bbusse/alpine-servo-build/releases/download}"
 
 SERVO_RUNTIME_DEPS="dbus-libs eudev-libs fontconfig freetype harfbuzz \
-libstdc++ libunwind libxkbcommon mesa-gl mesa-egl wayland-libs-client \
-wayland-libs-egl"
+libstdc++ libunwind libxkbcommon wayland-libs-client wayland-libs-egl"
 
 setup_suite() {
     local root tmp arch asset
@@ -70,6 +69,10 @@ in_image() {
     "$ENGINE" run --rm --entrypoint /bin/sh "$TEST_IMAGE" -c "$1"
 }
 
+in_image_within() {
+    timeout "$1" "$ENGINE" run --rm --entrypoint /bin/sh "$TEST_IMAGE" -c "$2"
+}
+
 test_apk_is_installed() {
     assert_matches "servoshell" "$(in_image 'apk info -e servoshell')"
 }
@@ -79,7 +82,7 @@ test_servoshell_binary_present() {
 }
 
 test_base_image_still_has_brush_as_sh() {
-    assert_equals "/usr/bin/brush" "$(in_image 'readlink /bin/sh')"
+    assert_matches "brush" "$(in_image '/bin/sh --version')"
 }
 
 test_servoshell_reports_version() {
@@ -91,5 +94,5 @@ test_servoshell_reports_version() {
 # blocking the suite.
 test_servoshell_loads_a_url_headless() {
     assert_status_code 0 \
-        "in_image 'timeout 120 /usr/bin/servoshell --headless --exit file:///srv/index.html'"
+        "in_image_within 120 '/usr/bin/servoshell --headless --exit file:///srv/index.html'"
 }
