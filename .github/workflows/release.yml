@@ -1,0 +1,295 @@
+name: Build and Release Servo
+
+# Builds servo/servo (https://github.com/servo/servo) from source against
+# musl and publishes it as a signed Alpine (.apk) Release asset.
+#
+# Upstream has never supported musl - a musl build attempt was closed by
+# maintainers in 2016 as out of scope, servo/servo#12721; there is no
+# official musl release binary, and Alpine's gcompat shim cannot run the
+# glibc one (confirmed by hand, it fails at symbol relocation on
+# __res_init/fcntl64). We build inside an actual Alpine container
+# (docker run alpine:edge below), which makes musl the *native*
+# host target instead of a cross-compile target, sidestepping
+# cross-linking/sysroot issues, and lets us `apk add` real musl-native
+# dev packages for every C dependency. To keep the dependency/build-risk
+# surface down, it drops the media-gstreamer/webgpu/webxr/gamepad features
+# - enough to render a web page, not full feature parity.
+#
+# SpiderMonkey is built by its own job: mozjs-sys supports
+# MOZJS_CREATE_ARCHIVE to emit a reusable libmozjs-<target>.tar.gz, and
+# MOZJS_ARCHIVE to consume one instead of rebuilding it. Splitting it out
+# keeps the long pole in a job that does nothing else, so a failure there
+# points straight at SpiderMonkey rather than at servo.
+#
+# Built for amd64 and arm64 natively (no binfmt/qemu emulation).
+#
+# Requires (already used by our other apk-producing repos):
+#   secrets.ABUILD_PRIVATE_KEY  - PEM RSA key used to sign the musl .apk
+#   vars.PACKAGER               - "Name <email>" packager string
+
+# Branch pushes build but do not publish: the release job below is gated on
+# a tag, so this is a ~50 minute compile that only proves the build still works
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      servo_version:
+        description: servo version/tag to package (e.g. v0.4.0)
+        required: false
+        default: v0.4.0
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  vars:
+    runs-on: ubuntu-latest
+    outputs:
+      servo_version: ${{ steps.v.outputs.version }}
+      servo_ref: ${{ steps.v.outputs.ref }}
+      apk_version: ${{ steps.v.outputs.apk_version }}
+    steps:
+      - id: v
+        run: |
+          VERSION="${{ inputs.servo_version || 'v0.4.0' }}"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          fi
+
+          # Our release identity and the upstream servo tag are not the same
+          # thing: a packaging RC like v0.4.0_rc1 has no counterpart in
+          # servo/servo, so cloning that ref there fails. Strip the suffix to
+          # get the servo release being packaged.
+          SERVO_REF="${VERSION%%[-_]rc*}"
+
+          echo "release version: ${VERSION}, servo ref: ${SERVO_REF}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ref=$SERVO_REF" >> "$GITHUB_OUTPUT"
+          # The apk and its asset name carry the version without the tag's
+          # leading v, which is what the Containerfile fetches by.
+          echo "apk_version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+  build-mozjs:
+    needs: vars
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    steps:
+      - name: Stage the build script
+        run: |
+          mkdir -p out
+          cat > out/build-mozjs.sh <<'EOS'
+          #!/bin/sh
+          set -eu
+          apk update
+          apk add --no-cache build-base bash ca-certificates clang clang-dev \
+            cmake curl git gperf llvm llvm-dev m4 perl pkgconf python3 zlib-dev \
+            rust cargo
+          mkdir -p /m/src
+          cd /m
+          cat > Cargo.toml <<'EOC'
+          [package]
+          name = "mozjs-archive"
+          version = "0.0.0"
+          edition = "2021"
+
+          [dependencies]
+          js = { package = "mozjs", version = "=0.17", default-features = false, features = ["intl", "libz-sys"] }
+          EOC
+          echo 'fn main() {}' > src/main.rs
+          MOZJS_CREATE_ARCHIVE=1 cargo build --release
+          a="$(find /m/target -name 'libmozjs-*.tar.gz' | head -n1)"
+          if [ -z "$a" ]; then
+              echo "MOZJS_CREATE_ARCHIVE produced no archive" >&2
+              find /m/target -name '*.tar.gz' >&2 || true
+              exit 1
+          fi
+          cp "$a" /out/
+          EOS
+          chmod +x out/build-mozjs.sh
+
+      - name: Build SpiderMonkey and emit the archive
+        run: |
+          docker run --rm -v "$PWD/out:/out" alpine:edge \
+            /out/build-mozjs.sh 2>&1 | tee out/mozjs-build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mozjs-linux-${{ matrix.arch }}-musl-build-log
+          path: out/mozjs-build.log
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mozjs-linux-${{ matrix.arch }}-musl
+          path: out/libmozjs-*.tar.gz
+
+  build-linux-musl:
+    needs:
+      - vars
+      - build-mozjs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    env:
+      ARTIFACT_SUFFIX: linux-${{ matrix.arch }}-musl
+    steps:
+      - name: Download the prebuilt SpiderMonkey archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mozjs-linux-${{ matrix.arch }}-musl
+          path: mozjs
+
+      - name: Stage the build script
+        run: |
+          mkdir -p out
+          cat > out/build-servo.sh <<'EOS'
+          #!/bin/sh
+          set -eu
+          apk update
+          apk add --no-cache build-base bash ca-certificates clang clang-dev \
+            cmake curl git gperf llvm llvm-dev m4 perl pkgconf python3 \
+            dbus-dev freetype-dev mesa-dev glib-dev harfbuzz-dev xz-dev \
+            eudev-dev libunwind-dev vulkan-loader libx11-dev libxcb-dev \
+            libxmu-dev libxkbcommon-dev libxkbcommon-x11 wayland-dev \
+            wayland-protocols openssl-dev zlib-dev expat-dev libpng-dev \
+            rust cargo
+          MOZJS_ARCHIVE="$(find /mozjs -name 'libmozjs-*.tar.gz' | head -n1)"
+          if [ -z "$MOZJS_ARCHIVE" ]; then
+              echo "no SpiderMonkey archive found in /mozjs" >&2
+              exit 1
+          fi
+          export MOZJS_ARCHIVE
+          echo "using $MOZJS_ARCHIVE"
+          cd /servo
+          # PIE carries ~4.5 MiB of relative relocations in .rela.dyn; RELR
+          # packs them roughly 20x smaller. The target loader has to read
+          # DT_RELR, which musl does since 1.2.4 -- the consumers run
+          # Alpine 3.24, musl 1.2.5. servo sets no rustflags of its own in
+          # .cargo/config.toml, so overriding the env clobbers nothing
+          export RUSTFLAGS="-C link-arg=-Wl,-z,pack-relative-relocs"
+          cargo build --profile production \
+            --no-default-features \
+            --features "baked-in-resources,js_jit,max_log_level" \
+            --bin servoshell
+          strip target/production/servoshell
+          cp target/production/servoshell /out/servoshell
+          EOS
+          chmod +x out/build-servo.sh
+
+      - name: Checkout servo
+        run: |
+          git clone --single-branch --depth 1 --branch "${{ needs.vars.outputs.servo_ref }}" \
+            https://github.com/servo/servo.git servo
+          rm -rf servo/.git
+
+      - name: Build servoshell (release, musl-native)
+        run: |
+          docker run --rm \
+            -v "$PWD/out:/out" \
+            -v "$PWD/mozjs:/mozjs:ro" \
+            -v "$PWD/servo:/servo" \
+            alpine:edge /out/build-servo.sh 2>&1 | tee out/servo-build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: servo-${{ env.ARTIFACT_SUFFIX }}-build-log
+          path: out/servo-build.log
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp out/servoshell "dist/servoshell-${{ env.ARTIFACT_SUFFIX }}"
+          chmod +x "dist/servoshell-${{ env.ARTIFACT_SUFFIX }}"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: servo-${{ env.ARTIFACT_SUFFIX }}
+          path: dist/servoshell-${{ env.ARTIFACT_SUFFIX }}
+
+  build-apk:
+    needs:
+      - vars
+      - build-linux-musl
+    uses: bbusse/github-workflows/.github/workflows/build-apk.yml@dev
+    with:
+      artifact_name: servo
+      binary_name: servoshell
+      version: ${{ needs.vars.outputs.servo_version }}
+      pkgdesc: Servo, an independent, modern web browser engine
+      pkgurl: https://github.com/servo/servo
+      license: MPL-2.0
+      key_name: apk-releases
+    secrets: inherit
+
+  release:
+    if: github.ref_type == 'tag'
+    needs:
+      - vars
+      - build-apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download musl amd64 apk
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: servo-apk-amd64
+          path: ./out/musl-x86_64
+
+      - name: Download musl arm64 apk
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: servo-apk-arm64
+          path: ./out/musl-aarch64
+
+      - name: Stage release files
+        run: |
+          mkdir -p ./release
+          for f in ./out/musl-x86_64/*.apk; do cp "$f" "./release/x86_64-$(basename "$f")"; done
+          for f in ./out/musl-aarch64/*.apk; do cp "$f" "./release/aarch64-$(basename "$f")"; done
+          ls -lah ./release
+
+      - name: Create GitHub Release
+        uses: bbusse/github-workflows/.github/actions/gh-release@dev
+        with:
+          tag: ${{ needs.vars.outputs.servo_version }}
+          title: servo ${{ needs.vars.outputs.servo_version }}
+          files: ./release/*.apk
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  container:
+    name: Build and push container
+    needs: [vars, release]
+    uses: bbusse/github-workflows/.github/workflows/container-build-push.yml@dev
+    with:
+      image_name: 'alpine-servo-musl'
+      image_repository: 'ghcr.io/bbusse'
+      container_registry: 'ghcr'
+      container_push_to_registry: true
+      build_args: SERVO_VERSION=${{ needs.vars.outputs.apk_version }}

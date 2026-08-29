@@ -1,0 +1,24 @@
+---
+# SPDX-FileCopyrightText: Björn Busse <bj.rn@baerlin.eu>
+# SPDX-License-Identifier: BSD-3-Clause
+
+name: Test
+
+# Needs a published servo apk to install, so it runs on the same tags as
+# release.yml plus on demand.
+# Runs against the last released apk, so it is useful on any branch -- and it
+# is what catches a broken test before a tag turns it into a failed release
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  test-bash-unit:
+    uses: bbusse/github-workflows/.github/workflows/run-tests-bash-unit.yml@dev
+    with:
+      test_files: tests/tests.sh
+      install_klue_test_deps: false

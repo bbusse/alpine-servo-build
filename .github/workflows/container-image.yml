@@ -1,0 +1,29 @@
+name: Build and release container
+
+# Builds Containerfile (see release.yml for how the .apk it installs
+# is produced). The image pulls a published Release asset, so it cannot
+# build before a release exists: on a tag that ordering is guaranteed by
+# release.yml's own container job, which runs after its release job.
+# This workflow is the manual path, for rebuilding the image against a
+# release that already exists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      servo_version:
+        description: >-
+          Release version to package, without the leading v (e.g.
+          0.4.0_rc1). Leave empty to use the Containerfile default.
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  container-build-push-musl:
+    uses: bbusse/github-workflows/.github/workflows/container-build-push.yml@dev
+    with:
+      image_name: 'alpine-servo-musl'
+      image_repository: 'ghcr.io/bbusse'
+      container_registry: 'ghcr'
+      container_push_to_registry: true
+      build_args: ${{ inputs.servo_version != '' && format('SERVO_VERSION={0}', inputs.servo_version) || '' }}
