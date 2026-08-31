@@ -14,8 +14,8 @@ ENGINE="${ENGINE:-podman}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/bbusse/moonshine-sway-web:latest}"
 
 # Which flavor to exercise: servoshell (upstream) or servo (chromeless). It is
-# the pkgname, the release-asset name and the installed binary. tests-servo.sh
-# is a thin wrapper that sets this to servo.
+# the pkgname, the release asset name and the installed binary. tests-servo.sh
+# is a thin wrapper that sets this to servo
 SERVO_PKGNAME="${SERVO_PKGNAME:-servoshell}"
 TEST_IMAGE="${TEST_IMAGE:-moonshine-sway-${SERVO_PKGNAME}:test}"
 

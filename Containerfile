@@ -12,7 +12,7 @@ ARG SERVO_PKGREL=0
 
 # Which flavor's package to install: "servoshell" (default, minibrowser
 # toolbar and all) or "servo" (the chromeless build). It is the apk pkgname,
-# the release-asset name, and the installed binary at /usr/bin/${SERVO_PKGNAME}.
+# the release asset name, and the installed binary at /usr/bin/${SERVO_PKGNAME}
 ARG SERVO_PKGNAME=servoshell
 
 COPY keys/apk-releases.rsa.pub /etc/apk/keys/apk-releases.rsa.pub
@@ -49,7 +49,7 @@ RUN case "${TARGETARCH}" in \
          /tmp/servo.apk \
     && rm /tmp/servo.apk
 
-# ARG is gone at run time; carry the binary name in as an ENV so the exec-form
-# entrypoint can still forward `docker run <image> --args` to it unchanged.
+# ARG is gone at run time; carry the binary name in as an ENV so the exec form
+# entrypoint can still forward `docker run <image> ...` args to it unchanged
 ENV SERVO_PKGNAME=${SERVO_PKGNAME}
 ENTRYPOINT ["/bin/sh", "-c", "exec \"$SERVO_PKGNAME\" \"$@\"", "sh"]

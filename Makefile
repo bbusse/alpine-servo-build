@@ -9,8 +9,8 @@ ALPINE_VERSION ?= edge
 
 # Which servo package/image flavor to build: servoshell (upstream, with the
 # minibrowser toolbar) or servo (chromeless, toolbar patched out). It selects
-# the release asset the Containerfile pulls and the image tag: servoshell ->
-# :latest, servo -> :servo.
+# the release asset the Containerfile pulls and the image tag: servoshell
+# gives :latest and servo gives :servo
 FLAVOR ?= servoshell
 IMAGE  ?= alpine-servo-musl:$(if $(filter servo,$(FLAVOR)),servo,latest)
 
