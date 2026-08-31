@@ -1,0 +1,45 @@
+name: Build and release container
+
+# Builds Containerfile (see release.yml for how the .apk it installs
+# is produced). The image pulls a published Release asset, so it cannot
+# build before a release exists: on a tag that ordering is guaranteed by
+# release.yml's own container job, which runs after its release job.
+# This workflow is the manual path, for rebuilding the image against a
+# release that already exists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      servo_version:
+        description: >-
+          Release version to package, without the leading v (e.g.
+          0.5.0). Leave empty to use the Containerfile default.
+        required: false
+        default: ''
+        type: string
+      flavor:
+        description: >-
+          Which package flavor to wrap: servoshell (minibrowser toolbar) or
+          servo (chromeless). Also selects the image tag, :latest or :servo
+        required: false
+        default: servoshell
+        type: choice
+        options:
+          - servoshell
+          - servo
+
+jobs:
+  container-build-push-musl:
+    uses: bbusse/github-workflows/.github/workflows/container-build-push.yml@dev
+    with:
+      image_name: 'alpine-servo-musl'
+      image_variant: ${{ inputs.flavor }}
+      image_default_tags: ${{ inputs.flavor == 'servo' && 'false' || 'true' }}
+      image_tag: ${{ inputs.flavor == 'servo' && 'servo' || '' }}
+      image_additional_tags: ${{ (inputs.flavor == 'servo' && inputs.servo_version != '') && format('servo-{0}', inputs.servo_version) || '' }}
+      image_repository: 'ghcr.io/bbusse'
+      container_registry: 'ghcr'
+      container_push_to_registry: true
+      build_args: |
+        ${{ inputs.servo_version != '' && format('SERVO_VERSION={0}', inputs.servo_version) || '' }}
+        SERVO_PKGNAME=${{ inputs.flavor }}
