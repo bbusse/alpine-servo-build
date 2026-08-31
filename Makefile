@@ -5,27 +5,37 @@ REMOTE ?= gh
 RELEASE_BRANCH ?= ci
 
 ENGINE ?= podman
-IMAGE  ?= alpine-servo-musl:latest
 ALPINE_VERSION ?= edge
+
+# Which servo package/image flavor to build: servoshell (upstream, with the
+# minibrowser toolbar) or servo (chromeless, toolbar patched out). It selects
+# the release asset the Containerfile pulls and the image tag: servoshell ->
+# :latest, servo -> :servo.
+FLAVOR ?= servoshell
+IMAGE  ?= alpine-servo-musl:$(if $(filter servo,$(FLAVOR)),servo,latest)
 
 # Bare version, as in alpine-brush-build: the v lives in the tag only.
 # build-apk.yml normalises v$(SERVO_VERSION) into pkgver $(SERVO_VERSION).
-SERVO_VERSION ?= 0.4.0
+SERVO_VERSION ?= 0.5.0
 SERVO_PKGREL  ?= 0
 RC            ?= 0
 
-.PHONY: container run release release-candidate rc test help \
+.PHONY: container container-servo run release release-candidate rc test help \
         _check-remote _check-branch _check-up-to-date
 
-container: ## build the Alpine image around the released servo apk
+container: ## build the Alpine image around the released servo apk (FLAVOR=servoshell|servo)
 	$(ENGINE) build \
 	  --build-arg ALPINE_VERSION=$(ALPINE_VERSION) \
 	  --build-arg SERVO_VERSION=$(SERVO_VERSION) \
 	  --build-arg SERVO_PKGREL=$(SERVO_PKGREL) \
+	  --build-arg SERVO_PKGNAME=$(FLAVOR) \
 	  -f Containerfile -t $(IMAGE) .
 
-run: container ## print servoshell's version from the built image
-	$(ENGINE) run --rm --entrypoint servoshell $(IMAGE) --version
+container-servo: ## build the chromeless "servo" image (no minibrowser toolbar)
+	$(MAKE) container FLAVOR=servo
+
+run: container ## print the engine's version from the built image
+	$(ENGINE) run --rm --entrypoint $(FLAVOR) $(IMAGE) --version
 
 _check-remote:
 	@git remote get-url $(REMOTE) > /dev/null 2>&1 || \

@@ -12,9 +12,14 @@
 
 ENGINE="${ENGINE:-podman}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/bbusse/moonshine-sway-web:latest}"
-TEST_IMAGE="${TEST_IMAGE:-moonshine-sway-servo:test}"
 
-SERVO_VERSION="${SERVO_VERSION:-0.4.0_rc1}"
+# Which flavor to exercise: servoshell (upstream) or servo (chromeless). It is
+# the pkgname, the release-asset name and the installed binary. tests-servo.sh
+# is a thin wrapper that sets this to servo.
+SERVO_PKGNAME="${SERVO_PKGNAME:-servoshell}"
+TEST_IMAGE="${TEST_IMAGE:-moonshine-sway-${SERVO_PKGNAME}:test}"
+
+SERVO_VERSION="${SERVO_VERSION:-0.5.0}"
 SERVO_PKGREL="${SERVO_PKGREL:-0}"
 RELEASE_URL="${RELEASE_URL:-https://github.com/bbusse/alpine-servo-build/releases/download}"
 
@@ -33,7 +38,7 @@ setup_suite() {
     *) echo "unsupported host arch: $(uname -m)" >&2; return 1 ;;
     esac
 
-    asset="${arch}-servoshell-${SERVO_VERSION}-r${SERVO_PKGREL}.${arch}.apk"
+    asset="${arch}-${SERVO_PKGNAME}-${SERVO_VERSION}-r${SERVO_PKGREL}.${arch}.apk"
     if ! curl -fsSL -o "$tmp/servo.apk" \
             "${RELEASE_URL}/v${SERVO_VERSION}/${asset}"; then
         echo "could not fetch ${asset} from ${RELEASE_URL}/v${SERVO_VERSION}" >&2
@@ -74,25 +79,25 @@ in_image_within() {
 }
 
 test_apk_is_installed() {
-    assert_matches "servoshell" "$(in_image 'apk info -e servoshell')"
+    assert_matches "$SERVO_PKGNAME" "$(in_image "apk info -e $SERVO_PKGNAME")"
 }
 
-test_servoshell_binary_present() {
-    assert_status_code 0 "in_image '[ -x /usr/bin/servoshell ]'"
+test_binary_present() {
+    assert_status_code 0 "in_image '[ -x /usr/bin/$SERVO_PKGNAME ]'"
 }
 
 test_base_image_still_has_brush_as_sh() {
     assert_matches "brush" "$(in_image '/bin/sh --version')"
 }
 
-test_servoshell_reports_version() {
-    assert_matches "[Ss]ervo" "$(in_image '/usr/bin/servoshell --version')"
+test_reports_version() {
+    assert_matches "[Ss]ervo" "$(in_image "/usr/bin/$SERVO_PKGNAME --version")"
 }
 
 # -z/--headless renders without a compositor, -x/--exit quits once the page
 # has loaded and the output image is stable, so a hang fails rather than
 # blocking the suite.
-test_servoshell_loads_a_url_headless() {
+test_loads_a_url_headless() {
     assert_status_code 0 \
-        "in_image_within 120 '/usr/bin/servoshell --headless --exit file:///srv/index.html'"
+        "in_image_within 120 '/usr/bin/$SERVO_PKGNAME --headless --exit file:///srv/index.html'"
 }
