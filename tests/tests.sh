@@ -19,7 +19,7 @@ BASE_IMAGE="${BASE_IMAGE:-ghcr.io/bbusse/moonshine-sway-web:latest}"
 SERVO_PKGNAME="${SERVO_PKGNAME:-servoshell}"
 TEST_IMAGE="${TEST_IMAGE:-moonshine-sway-${SERVO_PKGNAME}:test}"
 
-SERVO_VERSION="${SERVO_VERSION:-0.5.0}"
+SERVO_VERSION="${SERVO_VERSION:-0.5.0_rc0}"
 SERVO_PKGREL="${SERVO_PKGREL:-0}"
 RELEASE_URL="${RELEASE_URL:-https://github.com/bbusse/alpine-servo-build/releases/download}"
 

@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.description="Alpine Linux with Servo, a web brows
 # Must match a tag published by release.yml (git tag <version>) and the
 # pkgrel abuild built it with (see build-apk.yml, default pkgrel: 0).
 # The tag may carry a packaging suffix, so this is the full version
-ARG SERVO_VERSION=0.5.0
+ARG SERVO_VERSION=0.5.0_rc0
 ARG SERVO_PKGREL=0
 
 # Which flavor's package to install: "servoshell" (default, minibrowser
